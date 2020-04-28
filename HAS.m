@@ -1,7 +1,11 @@
 %HAS v4 has reflected pressures. Pretty sure indexing is all correct.
+% angular restriction comes from this paper (The FOCUS people)
+% Zeng, X., & McGough, R. J. (2008). Evaluation of the angular
+%     spectrum approach for simulations of near-field pressures. The
+%     Journal of the Acoustical Society of America, 123(1), 68-76.
 % wondering if zero padding more would help. 
 
-% HASv3 uses weighted average method developed by steven leung from
+% HASv3 uses weighted average method developed by n leung from
 % stanford
 % HAS v3 doesn't have reflected pressures
 % HAS v3 may not have indexing in z correct
@@ -36,6 +40,9 @@ function [p, Refp, Forp] = HAS(p0,vox,f,sos,density)
     % create wavenumber grids
     [kx2,ky2] = getKgridsquared(Nx,Ny,vox);
 
+    % precompute term for angular restriction
+    sqrt_kx2_ky2 = sqrt(kx2 + ky2);
+    
     % calculate reflection and transmission coefficients
     imped = density.*sos; % impedance
     Ref = (imped(:,:,2:end)...
@@ -53,19 +60,26 @@ function [p, Refp, Forp] = HAS(p0,vox,f,sos,density)
         kLayer = 2*pi*f./sos(:,:,z);
         
         % get kprime forward
-        kpf = weightedAverageSteve(abs(p(:,:,z)), kLayer);
+        kpf = weightedAverage(abs(p(:,:,z)), kLayer);
         
         % cast pressure into f domain (eqn 8)
         ppf = fft2(p(:,:,z));
         
         % propogate in spatial frequency domain (eqn 9)
         kz = sqrt(kpf.^2 - kx2 - ky2);
+        % propagater
         H = exp(1i.*dz.*kz);
+        % truncate with angular restriction
+        D = Nx*vox;
+        kc = kpf * sqrt(0.5 * D.^2 ./ (0.5 * D.^2 + (dz*z)^2)); %eqn 10
+        H(sqrt_kx2_ky2 > kc) = 0;
+        
+        % propogate
         ppf = ifft2(ppf.*H);
         
         % propogate spatial domain (eqn 7)
         % T scales amps based on impedance mismatch
-        rp = dz; % Steve also didn't get the r prime bit
+        rp = dz; %  also didn't get the r prime bit
         dbn = kLayer - kpf; % difference in spatial properties of medium
         p(:,:,z+1) = T(:,:,z).*ppf.*exp(rp*1i.*dbn); %pn'
         
@@ -86,7 +100,7 @@ function [p, Refp, Forp] = HAS(p0,vox,f,sos,density)
             kLayer = 2*pi*f./sos(:,:,z);
 
             % get kprime forward
-            kpf = weightedAverageSteve(abs(Refp(:,:,z)), kLayer);
+            kpf = weightedAverage(abs(Refp(:,:,z)), kLayer);
 
             % cast pressure into f domain (eqn 8)
             ppf = fft2(Refp(:,:,z));
@@ -98,7 +112,7 @@ function [p, Refp, Forp] = HAS(p0,vox,f,sos,density)
 
             % propogate spatial domain (eqn 7)
             % T scales amps based on impedance mismatch
-            rp = dz; % Steve also didn't get the r prime bit
+            rp = dz; %  also didn't get the r prime bit
             dbn = kLayer - kpf; % difference in spatial properties of medium
             Refp(:,:,z-1) = Refp(:,:,z-1)+ppf.*exp(rp*1i.*dbn); %pn'
 
